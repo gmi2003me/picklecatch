@@ -10,7 +10,7 @@ let bottleY;
 // Declare bottle dimensions globally as let, calculate in resizeCanvas
 let bottleWidth;
 let bottleHeight;
-let bottleX; // Also calculate initial X in resizeCanvas
+let bottleX; // Calculation moved below
 
 // Adjust canvas size dynamically
 function resizeCanvas() {
@@ -42,9 +42,8 @@ function resizeCanvas() {
     bottleWidth = canvas.width * 0.08; // e.g., 8% of canvas width
     bottleHeight = bottleWidth * 1.6; // Maintain aspect ratio (80/50 = 1.6)
     bottleY = canvas.height - bottleHeight - 10; 
-    // Calculate initial X position (or maybe keep current X if resizing mid-game?)
-    // For simplicity on load/resize, let's center it:
-    bottleX = (canvas.width - bottleWidth) / 2;
+    // Calculate initial X position (center of single bottle initially)
+    bottleX = canvas.width / 2; // Start centered
 }
 
 // Initial resize and event listener for window resize
@@ -56,6 +55,17 @@ window.addEventListener('resize', resizeCanvas);
 let score = 0;
 let gameState = 'welcome'; // States: 'welcome', 'playing', 'gameOver'
 let cpuModeActive = false; // Track CPU mode
+
+// Power-up State
+let isDoubleBottleActive = false;
+let doubleBottleEndTime = 0;
+const doubleBottleDuration = 10000; // 10 seconds in milliseconds
+const doubleBottleFlashTime = 3000; // Flash for last 3 seconds
+
+// Golden Pickleball Spawn Timer
+const goldenSpawnInterval = 15000; // Average interval (15s)
+const goldenSpawnChance = 0.3; // 30% chance each interval check
+let nextGoldenSpawnCheck = 0;
 
 // Water Bottle - Variables moved up and calculated in resizeCanvas
 // let bottleX = (canvas.width - bottleWidth) / 2;
@@ -167,6 +177,49 @@ function playDoomsdaySound() {
     oscillator.stop(audioCtx.currentTime + 0.5);
 }
 
+function playGoldenSpawnSound() {
+    if (!audioCtx) return;
+    // Simple high-pitched chime sound
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6
+    osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime); // E6
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+
+    osc1.connect(gainNode);
+    osc2.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    osc1.start(audioCtx.currentTime);
+    osc2.start(audioCtx.currentTime);
+    osc1.stop(audioCtx.currentTime + 0.5);
+    osc2.stop(audioCtx.currentTime + 0.5);
+}
+
+function playGoldenCatchSound() {
+    if (!audioCtx) return;
+    // Ascending arpeggio sound
+    const baseFreq = 440; // A4
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    gainNode.connect(audioCtx.destination);
+
+    const notes = [0, 4, 7, 12]; // Root, M3, P5, Octave
+    notes.forEach((interval, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(baseFreq * Math.pow(2, interval / 12), audioCtx.currentTime + i * 0.1);
+        osc.connect(gainNode);
+        osc.start(audioCtx.currentTime + i * 0.1);
+        osc.stop(audioCtx.currentTime + (i + 1) * 0.15);
+    });
+}
+
 // --- End Sound Functions ---
 
 // --- Drawing Functions ---
@@ -200,23 +253,39 @@ function drawCourtBackground() {
     ctx.fillRect(0, kitchenLineY - courtLineThickness / 2, width, courtLineThickness);
 }
 
-function drawBottle() {
+function drawSingleBottle(xPos) {
+    // Extracted drawing logic for one bottle
     // Bottle Body
-    ctx.fillStyle = '#42a5f5'; // Lighter Blue for body
-    ctx.fillRect(bottleX, bottleY, bottleWidth, bottleHeight);
-
-    // Water inside (semi-transparent)
-    const waterLevel = bottleHeight * 0.7; // How full the bottle is
-    ctx.fillStyle = 'rgba(66, 165, 245, 0.7)'; // Slightly darker, transparent blue
-    ctx.fillRect(bottleX + 5, bottleY + (bottleHeight - waterLevel), bottleWidth - 10, waterLevel - 5);
-
+    ctx.fillStyle = '#42a5f5'; 
+    ctx.fillRect(xPos - bottleWidth / 2, bottleY, bottleWidth, bottleHeight);
+    // Water inside
+    const waterLevel = bottleHeight * 0.7; 
+    ctx.fillStyle = 'rgba(66, 165, 245, 0.7)'; 
+    ctx.fillRect(xPos - bottleWidth / 2 + 5, bottleY + (bottleHeight - waterLevel), bottleWidth - 10, waterLevel - 5);
     // Bottle Cap
-    ctx.fillStyle = '#e0e0e0'; // Grey cap
-    ctx.fillRect(bottleX + bottleWidth * 0.25, bottleY - 10, bottleWidth * 0.5, 10);
-    ctx.fillStyle = '#bdbdbd'; // Darker grey for top ridge
-    ctx.fillRect(bottleX + bottleWidth * 0.2, bottleY - 12, bottleWidth * 0.6, 2);
+    ctx.fillStyle = '#e0e0e0'; 
+    ctx.fillRect(xPos - bottleWidth / 2 + bottleWidth * 0.25, bottleY - 10, bottleWidth * 0.5, 10);
+    ctx.fillStyle = '#bdbdbd'; 
+    ctx.fillRect(xPos - bottleWidth / 2 + bottleWidth * 0.2, bottleY - 12, bottleWidth * 0.6, 2);
+}
 
-    ctx.textAlign = 'left'; // Reset alignment
+function drawBottle() {
+    if (isDoubleBottleActive) {
+        const currentTime = performance.now(); // Need current time for flashing
+        const timeLeft = doubleBottleEndTime - currentTime;
+        const shouldFlash = timeLeft <= doubleBottleFlashTime && Math.floor(currentTime / 200) % 2 === 0;
+        
+        // Draw left bottle (always)
+        drawSingleBottle(bottleX - bottleWidth / 2);
+
+        // Draw right bottle (unless flashing)
+        if (!shouldFlash) { 
+            drawSingleBottle(bottleX + bottleWidth / 2);
+        }
+    } else {
+        // Draw single bottle
+        drawSingleBottle(bottleX);
+    }
 }
 
 // Welcome Screen
@@ -246,18 +315,20 @@ function drawWelcomeScreen() {
 
 // New Mouse Controls using Relative Movement
 document.addEventListener('mousemove', (evt) => {
-    // Only move if playing, not in CPU mode, AND pointer is locked to the canvas
+    // Only move if playing, not in CPU mode, AND pointer is locked 
     if (gameState === 'playing' && !cpuModeActive && document.pointerLockElement === canvas) {
-        // initAudioContext(); // Might not be needed here if already done on start/lock
-        
-        bottleX += evt.movementX; // Use relative movement
+        bottleX += evt.movementX; 
 
-        // Keep bottle within canvas bounds
-        if (bottleX < 0) {
-            bottleX = 0;
+        // Keep center of single/double bottle within canvas bounds
+        const effectiveWidth = isDoubleBottleActive ? bottleWidth * 2 : bottleWidth;
+        const leftEdge = bottleX - effectiveWidth / 2;
+        const rightEdge = bottleX + effectiveWidth / 2;
+
+        if (leftEdge < 0) {
+            bottleX = effectiveWidth / 2;
         }
-        if (bottleX + bottleWidth > canvas.width) {
-            bottleX = canvas.width - bottleWidth;
+        if (rightEdge > canvas.width) {
+            bottleX = canvas.width - effectiveWidth / 2;
         }
     }
 });
@@ -274,19 +345,23 @@ function getTouchPos(canvas, evt) {
 }
 
 canvas.addEventListener('touchmove', (evt) => {
-    evt.preventDefault(); // Prevent scrolling while dragging
-    initAudioContext(); // Ensure audio is ready on touch interaction
+    evt.preventDefault(); 
+    initAudioContext(); 
     const touchPos = getTouchPos(canvas, evt);
-    bottleX = touchPos.x - bottleWidth / 2;
+    bottleX = touchPos.x; // Touch directly sets the center position
 
-    // Keep bottle within canvas bounds
-    if (bottleX < 0) {
-        bottleX = 0;
+    // Keep center of single/double bottle within canvas bounds
+    const effectiveWidth = isDoubleBottleActive ? bottleWidth * 2 : bottleWidth;
+    const leftEdge = bottleX - effectiveWidth / 2;
+    const rightEdge = bottleX + effectiveWidth / 2;
+
+    if (leftEdge < 0) {
+        bottleX = effectiveWidth / 2;
     }
-    if (bottleX + bottleWidth > canvas.width) {
-        bottleX = canvas.width - bottleWidth;
+    if (rightEdge > canvas.width) {
+        bottleX = canvas.width - effectiveWidth / 2;
     }
-}, { passive: false }); // Need passive: false to allow preventDefault
+}, { passive: false }); 
 
 // Start Game Listener
 function startGame() {
@@ -299,9 +374,7 @@ function startGame() {
         canvas.removeEventListener('touchstart', startGame);
         canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
         canvas.requestPointerLock();
-
-        // *** Explicitly call resizeCanvas when game starts *** - REMOVE THIS
-        // resizeCanvas(); 
+        nextGoldenSpawnCheck = performance.now() + goldenSpawnInterval / 2; // Initialize golden timer
     }
 }
 canvas.addEventListener('mousedown', startGame);
@@ -344,42 +417,63 @@ function spawnPickleball() {
     const y = -pickleballRadius; // Start above the canvas
     const angle = Math.random() * Math.PI * 2; // Random starting angle
     const rotationSpeed = (Math.random() - 0.5) * 0.1; // Random rotation speed/direction
-    pickleballs.push({ x, y, angle, rotationSpeed });
+    pickleballs.push({ x, y, angle, rotationSpeed, isGolden: false }); // Mark as not golden
     playPopSound();
+}
+
+// Add function to spawn golden pickleball
+function spawnGoldenPickleball() {
+    const x = Math.random() * (canvas.width - pickleballRadius * 2) + pickleballRadius;
+    const y = -pickleballRadius; 
+    const angle = Math.random() * Math.PI * 2;
+    const rotationSpeed = (Math.random() - 0.5) * 0.15; // Slightly faster spin?
+    pickleballs.push({ x, y, angle, rotationSpeed, isGolden: true }); // Mark as golden
+    playGoldenSpawnSound(); // Play special sound
 }
 
 function updatePickleballs() {
     for (let i = pickleballs.length - 1; i >= 0; i--) {
         const pb = pickleballs[i];
         pb.y += pickleballSpeed;
-        pb.angle += pb.rotationSpeed; // Update angle for rotation
+        pb.angle += pb.rotationSpeed; 
 
         // Remove pickleball if it goes off screen (missed)
         if (pb.y - pickleballRadius > canvas.height) {
             pickleballs.splice(i, 1);
             
-            // Transition to gameOver state ONCE
             if (gameState === 'playing') { 
-                gameState = 'gameOver'; // Change state
+                gameState = 'gameOver'; 
                 playDoomsdaySound();
-                addRestartListener(); // Add listener ONCE when game ends
-                // Exit pointer lock when game ends
+                addRestartListener(); 
                 document.exitPointerLock = document.exitPointerLock || document.mozExitPointerLock;
                 document.exitPointerLock();
             }
         }
 
-        // Collision detection with bottle
+        // Collision detection with bottle (using effective width)
+        const effectiveWidth = isDoubleBottleActive ? bottleWidth * 2 : bottleWidth;
+        const catchLeftEdge = bottleX - effectiveWidth / 2;
+        const catchRightEdge = bottleX + effectiveWidth / 2;
+        
         if (
-            pb.x > bottleX &&
-            pb.x < bottleX + bottleWidth &&
-            pb.y + pickleballRadius > bottleY // Check collision with top of bottle
+            pb.x > catchLeftEdge &&
+            pb.x < catchRightEdge &&
+            pb.y + pickleballRadius > bottleY 
         ) {
+            const wasGolden = pb.isGolden; // Check before splicing
             pickleballs.splice(i, 1); // Remove caught pickleball
-            score++;
-            playSplashSound();
-            // Optional: Increase speed slightly on catch
-            pickleballSpeed += 0.05;
+
+            if (wasGolden) {
+                playGoldenCatchSound();
+                isDoubleBottleActive = true;
+                doubleBottleEndTime = performance.now() + doubleBottleDuration;
+                // Don't increase score or speed for golden ball
+            } else {
+                score++;
+                playSplashSound();
+                // Optional: Increase speed slightly on catch
+                pickleballSpeed += 0.05;
+            }
         }
     }
 }
@@ -387,7 +481,7 @@ function updatePickleballs() {
 function drawPickleballs() {
     pickleballs.forEach(pb => {
         // Draw main pickleball body
-        ctx.fillStyle = '#9acd32'; // Yellow-green for pickleballs
+        ctx.fillStyle = pb.isGolden ? '#FFD700' : '#9acd32'; // Gold or Yellow-green
         ctx.beginPath();
         ctx.arc(pb.x, pb.y, pickleballRadius, 0, Math.PI * 2);
         ctx.fill();
@@ -469,7 +563,7 @@ function handleRestartInput() {
 }
 
 // Game loop placeholder
-function gameLoop(currentTime) { // Pass currentTime for spawn logic
+function gameLoop(currentTime) { 
 
     if (gameState === 'welcome') {
         // Draw background for welcome screen
@@ -478,48 +572,51 @@ function gameLoop(currentTime) { // Pass currentTime for spawn logic
         drawWelcomeScreen();
 
     } else if (gameState === 'playing') {
-        // Draw the court background first
         drawCourtBackground();
 
-        // --- CPU Mode Logic --- (Only runs when playing)
+        // --- CPU Mode Logic --- 
         if (cpuModeActive) {
-           // Find the lowest pickleball (highest y value) that's still above the bottle
-           let targetPickleball = null;
+            let targetPickleball = null;
             let lowestY = -Infinity;
-
             pickleballs.forEach(pb => {
-                if (pb.y < bottleY && pb.y > lowestY) { // Find highest y below bottle line
+                if (pb.y < bottleY && pb.y > lowestY) {
                     lowestY = pb.y;
                     targetPickleball = pb;
                 }
             });
 
             if (targetPickleball) {
-                // Calculate the target X to center the bottle under the ball
-                const targetX = targetPickleball.x - bottleWidth / 2;
-                
-                // Move bottle towards target X (can add smoothing later if desired)
+                // Target the center position (bottleX)
+                const targetX = targetPickleball.x; 
                 bottleX = targetX;
 
-                // Clamp bottle position to canvas bounds
-                if (bottleX < 0) {
-                    bottleX = 0;
+                // Clamp using effective width
+                const effectiveWidth = isDoubleBottleActive ? bottleWidth * 2 : bottleWidth;
+                const leftEdge = bottleX - effectiveWidth / 2;
+                const rightEdge = bottleX + effectiveWidth / 2;
+                if (leftEdge < 0) {
+                    bottleX = effectiveWidth / 2;
                 }
-                if (bottleX + bottleWidth > canvas.width) {
-                    bottleX = canvas.width - bottleWidth;
+                if (rightEdge > canvas.width) {
+                    bottleX = canvas.width - effectiveWidth / 2;
                 }
             } 
         }
+        
+        // --- Power-up Timer Check ---
+        if (isDoubleBottleActive && currentTime >= doubleBottleEndTime) {
+            isDoubleBottleActive = false;
+        }
 
-        // Draw game elements
+        // Draw game elements (drawBottle now handles single/double)
         drawBottle();
         drawPickleballs(); 
         drawScore(); 
 
-        // Update game state (pickleballs, collisions)
-        updatePickleballs(); // This might change gameState to 'gameOver'
+        // Update game state
+        updatePickleballs();
 
-        // --- Spawning Logic --- 
+        // --- Spawning Logic (Normal + Golden) ---
         if (currentTime - lastSpawnTime > currentRequiredSpawnDelay && pickleballsToSpawnCount === 0) { 
             const numToSpawn = Math.floor(score / 10) + 1; 
             pickleballsToSpawnCount = numToSpawn;
@@ -551,6 +648,14 @@ function gameLoop(currentTime) { // Pass currentTime for spawn logic
                  const randomDelay = Math.random() * 800 + 200; // WIDENED delay within burst (0.2s to 1.0s)
                  nextBurstSpawnTime = currentTime + randomDelay;
             }
+        }
+        
+        // --- Golden Pickleball Spawn Logic ---
+        if (currentTime > nextGoldenSpawnCheck) {
+             nextGoldenSpawnCheck = currentTime + goldenSpawnInterval;
+             if (Math.random() < goldenSpawnChance) {
+                 spawnGoldenPickleball();
+             }
         }
         
     } else if (gameState === 'gameOver') {
