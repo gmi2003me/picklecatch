@@ -1,16 +1,22 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Declare constants needed by resizeCanvas BEFORE the first call
+const bottleWidth = 50;
+const bottleHeight = 80;
+// Declare bottleY globally BEFORE first resize call, assign value IN resize
+let bottleY;
+
 // Adjust canvas size dynamically
 function resizeCanvas() {
     // Make canvas dimensions a multiple of the drawing scale if needed
     const scale = 1; // Example scale factor
     const maxWidth = window.innerWidth * 0.9;
-    const maxHeight = window.innerHeight * 0.7;
+    const maxHeight = window.innerHeight * 0.7; // Reverted to 70% for this specific rollback state
 
     // Set a base size or aspect ratio
     let canvasWidth = 600;
-    let canvasHeight = 400;
+    let canvasHeight = 600; // The first attempt had 600 here
 
     // Scale down if necessary
     if (canvasWidth > maxWidth) {
@@ -26,10 +32,13 @@ function resizeCanvas() {
 
     canvas.width = Math.floor(canvasWidth / scale) * scale;
     canvas.height = Math.floor(canvasHeight / scale) * scale;
+
+    // *** Recalculate bottleY based on the NEW canvas height ***
+    bottleY = canvas.height - bottleHeight - 10; 
 }
 
 // Initial resize and event listener for window resize
-resizeCanvas();
+resizeCanvas(); // Run once on load
 window.addEventListener('resize', resizeCanvas);
 
 
@@ -39,10 +48,9 @@ let gameState = 'welcome'; // States: 'welcome', 'playing', 'gameOver'
 let cpuModeActive = false; // Track CPU mode
 
 // Water Bottle
-const bottleWidth = 50;
-const bottleHeight = 80;
 let bottleX = (canvas.width - bottleWidth) / 2;
-const bottleY = canvas.height - bottleHeight - 10; // Positioned near the bottom
+// Define bottleY globally but calculate it after resize
+// let bottleY; 
 
 // Pickleball properties
 const pickleballRadius = 10;
@@ -275,15 +283,17 @@ canvas.addEventListener('touchmove', (evt) => {
 // Start Game Listener
 function startGame() {
     if (gameState === 'welcome') {
+        // console.log("startGame called!"); // Remove debug log
         gameState = 'playing';
-        lastSpawnTime = performance.now(); // Initialize spawn timer only when game starts
-        initAudioContext(); // Ensure audio is ready
-        // Remove the listener after the first click
+        lastSpawnTime = performance.now(); 
+        initAudioContext(); 
         canvas.removeEventListener('mousedown', startGame);
         canvas.removeEventListener('touchstart', startGame);
-        // Request pointer lock when game starts
         canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
         canvas.requestPointerLock();
+
+        // *** Explicitly call resizeCanvas when game starts *** - REMOVE THIS
+        // resizeCanvas(); 
     }
 }
 canvas.addEventListener('mousedown', startGame);
@@ -545,5 +555,8 @@ function gameLoop(currentTime) { // Pass currentTime for spawn logic
     requestAnimationFrame(gameLoop);
 }
 
-// Start the game loop
-requestAnimationFrame(gameLoop);
+// Start the game loop AFTER fonts are ready
+document.fonts.ready.then(() => {
+  console.log('Fonts loaded, starting game loop.');
+  requestAnimationFrame(gameLoop);
+});
