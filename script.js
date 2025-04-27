@@ -63,7 +63,7 @@ const doubleBottleDuration = 10000; // 10 seconds in milliseconds
 const doubleBottleFlashTime = 3000; // Flash for last 3 seconds
 
 // Golden Pickleball Spawn Timer
-const goldenSpawnInterval = 15000; // Average interval (15s)
+const goldenSpawnInterval = 11250; // Decreased interval by 25% (was 15000)
 const goldenSpawnChance = 0.3; // 30% chance each interval check
 let nextGoldenSpawnCheck = 0;
 
