@@ -1,0 +1,24 @@
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+}
+
+h1 {
+    margin-bottom: 20px;
+    font-family: "Press Start 2P", cursive; /* Apply 8-bit font */
+}
+
+canvas {
+    border: 1px solid black;
+    /* background-color: #e0f7fa; */ /* Remove static background color */
+    display: block; /* Prevent extra space below canvas */
+    max-width: 100%; /* Make canvas responsive */
+    height: auto;
+    cursor: none; /* Hide the cursor over the canvas */
+} 
