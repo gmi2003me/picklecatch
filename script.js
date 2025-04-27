@@ -2,10 +2,15 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 // Declare constants needed by resizeCanvas BEFORE the first call
-const bottleWidth = 50;
-const bottleHeight = 80;
+// const bottleWidth = 50; // Change to let below
+// const bottleHeight = 80; // Change to let below
 // Declare bottleY globally BEFORE first resize call, assign value IN resize
 let bottleY;
+
+// Declare bottle dimensions globally as let, calculate in resizeCanvas
+let bottleWidth;
+let bottleHeight;
+let bottleX; // Also calculate initial X in resizeCanvas
 
 // Adjust canvas size dynamically
 function resizeCanvas() {
@@ -33,8 +38,13 @@ function resizeCanvas() {
     canvas.width = Math.floor(canvasWidth / scale) * scale;
     canvas.height = Math.floor(canvasHeight / scale) * scale;
 
-    // *** Recalculate bottleY based on the NEW canvas height ***
+    // *** Calculate bottle dimensions and position relative to NEW canvas size ***
+    bottleWidth = canvas.width * 0.08; // e.g., 8% of canvas width
+    bottleHeight = bottleWidth * 1.6; // Maintain aspect ratio (80/50 = 1.6)
     bottleY = canvas.height - bottleHeight - 10; 
+    // Calculate initial X position (or maybe keep current X if resizing mid-game?)
+    // For simplicity on load/resize, let's center it:
+    bottleX = (canvas.width - bottleWidth) / 2;
 }
 
 // Initial resize and event listener for window resize
@@ -47,10 +57,8 @@ let score = 0;
 let gameState = 'welcome'; // States: 'welcome', 'playing', 'gameOver'
 let cpuModeActive = false; // Track CPU mode
 
-// Water Bottle
-let bottleX = (canvas.width - bottleWidth) / 2;
-// Define bottleY globally but calculate it after resize
-// let bottleY; 
+// Water Bottle - Variables moved up and calculated in resizeCanvas
+// let bottleX = (canvas.width - bottleWidth) / 2;
 
 // Pickleball properties
 const pickleballRadius = 10;
